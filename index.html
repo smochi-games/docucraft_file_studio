@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="pl" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DocuCraft File Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            winBg: '#181818',
+            winHeader: '#202020',
+            winHover: '#2d2d2d',
+            winBorder: '#2e2e2e',
+            winCard: '#252525'
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #141414;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2e2e2e;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #404040;
+    }
+
+    /* Standardized line height and font family for editor & line numbers */
+    .editor-textarea {
+      tab-size: 2;
+      font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+      line-height: 1.6;
+    }
+
+    /* Windows Explorer Command Bar Button style */
+    .win-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #e2e8f0;
+      background-color: transparent;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .win-btn:hover {
+      background-color: #2d2d2d;
+      border-color: #383838;
+    }
+    .win-btn-primary {
+      background-color: #2563eb;
+      color: #ffffff;
+      border-color: #3b82f6;
+    }
+    .win-btn-primary:hover {
+      background-color: #1d4ed8;
+      border-color: #60a5fa;
+    }
+  </style>
+</head>
+<body class="h-full font-sans antialiased flex flex-col bg-[#181818] text-slate-100 overflow-hidden select-none">
+
+  <!-- Window Explorer Titlebar -->
+  <div class="h-9 bg-[#1f1f1f] border-b border-[#2b2b2b] flex items-center justify-between px-3 text-xs text-slate-400">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-folder-closed text-indigo-400"></i>
+      <span class="text-slate-200 font-medium text-xs">Eksplorator plików — DocuCraft File Studio</span>
+    </div>
+    <div class="flex items-center gap-2 text-[11px] text-slate-500">
+      <span class="px-2 py-0.5 rounded bg-[#2b2b2b] text-slate-300 font-mono">v3.4 Audio & Editor Custom Ext</span>
+    </div>
+  </div>
+
+  <!-- Windows Explorer Command Ribbon / Dedicated Action Bar -->
+  <header class="bg-[#202020] border-b border-[#2d2d2d] px-3 py-1.5 flex items-center justify-between gap-2 overflow-x-auto shrink-0">
+    
+    <!-- Left Group: Download & Export & Upload Actions -->
+    <div class="flex items-center gap-1">
+      <button onclick="downloadZipArchive()" class="win-btn win-btn-primary shadow-sm" title="Pobierz wszystkie pliki i sekcje jako archiwum ZIP">
+        <i class="fa-solid fa-file-zipper text-sky-200 text-sm"></i>
+        <span class="font-semibold">Pobierz paczkę ZIP</span>
+      </button>
+
+      <button onclick="downloadActiveFile()" id="btnDownloadActive" class="win-btn" title="Pobierz aktualnie otwarty plik">
+        <i class="fa-solid fa-download text-indigo-400 text-sm"></i>
+        <span>Pobierz plik</span>
+      </button>
+
+      <div class="h-5 w-px bg-[#333333] mx-1"></div>
+
+      <!-- File Upload Button -->
+      <button onclick="triggerFileUpload()" class="win-btn" title="Wgraj własne pliki z komputera">
+        <i class="fa-solid fa-cloud-arrow-up text-sky-400 text-sm"></i>
+        <span>Wgraj Pliki</span>
+      </button>
+      <input type="file" id="fileUploadInput" multiple class="hidden" onchange="handleFileUpload(event)">
+
+      <button onclick="triggerImportZip()" class="win-btn" title="Importuj zewnętrzną paczkę ZIP">
+        <i class="fa-solid fa-file-import text-amber-400 text-sm"></i>
+        <span>Importuj ZIP</span>
+      </button>
+      <input type="file" id="zipFileInput" accept=".zip" class="hidden" onchange="handleZipImport(event)">
+
+      <div class="h-5 w-px bg-[#333333] mx-1"></div>
+
+      <!-- File Creation Actions -->
+      <button onclick="createNewFolderModal()" class="win-btn" title="Nowa Sekcja / Podfolder">
+        <i class="fa-solid fa-folder-plus text-amber-300 text-sm"></i>
+        <span>Nowa Sekcja / Folder</span>
+      </button>
+
+      <button onclick="createNewFileModal()" class="win-btn" title="Nowy dokument tekstowy">
+        <i class="fa-solid fa-file-circle-plus text-sky-400 text-sm"></i>
+        <span>Nowy Plik</span>
+      </button>
+    </div>
+
+    <!-- Right Group: Quick Tools & View Switchers -->
+    <div class="flex items-center gap-1">
+      <button onclick="copyActiveContent()" title="Kopiuj treść aktywnego pliku" class="win-btn">
+        <i class="fa-regular fa-copy text-slate-300"></i>
+        <span class="hidden sm:inline">Kopiuj</span>
+      </button>
+
+      <div class="h-5 w-px bg-[#333333] mx-1"></div>
+
+      <!-- View Switchers -->
+      <div id="viewModeGroup" class="hidden flex items-center gap-0.5 bg-[#181818] p-0.5 rounded border border-[#2d2d2d]">
+        <button id="btnModeEdit" onclick="switchViewMode('edit')" class="px-2 py-1 text-[11px] rounded font-medium text-white bg-indigo-600">
+          <i class="fa-solid fa-code mr-1"></i> Kod
+        </button>
+        <button id="btnModeSplit" onclick="switchViewMode('split')" class="px-2 py-1 text-[11px] rounded font-medium text-slate-400 hover:text-slate-200 hidden lg:inline">
+          <i class="fa-solid fa-columns mr-1"></i> Podział
+        </button>
+        <button id="btnModePreview" onclick="switchViewMode('preview')" class="px-2 py-1 text-[11px] rounded font-medium text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-eye mr-1"></i> Podgląd
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Windows Explorer Address / Path Bar -->
+  <div class="h-10 bg-[#1a1a1a] border-b border-[#2b2b2b] px-3 flex items-center gap-2 shrink-0">
+    <!-- Nav controls -->
+    <div class="flex items-center gap-1 text-slate-400">
+      <button onclick="navigateBack()" id="btnNavBack" title="Cofnij do poprzedniego folderu" class="p-1.5 hover:bg-[#2a2a2a] hover:text-slate-200 rounded transition disabled:opacity-30">
+        <i class="fa-solid fa-arrow-left text-xs"></i>
+      </button>
+      <button onclick="navigateUp()" id="btnNavUp" title="Folder nadrzędny" class="p-1.5 hover:bg-[#2a2a2a] hover:text-slate-200 rounded transition disabled:opacity-30">
+        <i class="fa-solid fa-arrow-up text-xs"></i>
+      </button>
+      <button onclick="renderExplorerView()" title="Odśwież widok" class="p-1.5 hover:bg-[#2a2a2a] hover:text-slate-200 rounded transition">
+        <i class="fa-solid fa-rotate-right text-xs"></i>
+      </button>
+    </div>
+
+    <!-- Windows Address Box -->
+    <div class="flex-1 bg-[#222222] border border-[#333333] hover:border-[#444444] rounded-md px-3 py-1 flex items-center justify-between text-xs text-slate-300 overflow-hidden">
+      <div class="flex items-center gap-1.5 truncate" id="breadcrumbPath">
+        <!-- Rendered dynamically -->
+      </div>
+      <span id="activeFileExtBadge" class="hidden text-[10px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">.html</span>
+    </div>
+
+    <!-- Windows Search Box -->
+    <div class="w-48 sm:w-64 bg-[#222222] border border-[#333333] focus-within:border-indigo-500 rounded-md px-2.5 py-1 flex items-center gap-2">
+      <i class="fa-solid fa-magnifying-glass text-xs text-slate-500"></i>
+      <input type="text" id="searchInput" oninput="renderExplorerView()" placeholder="Szukaj w sekcjach..." 
+             class="w-full bg-transparent text-slate-200 text-xs focus:outline-none placeholder-slate-500">
+    </div>
+  </div>
+
+  <!-- Main Explorer Layout -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- Left Sidebar Navigation Pane -->
+    <aside class="w-60 sm:w-64 bg-[#1c1c1c] border-r border-[#2b2b2b] flex flex-col shrink-0 select-none">
+      
+      <!-- Quick Access Group Header -->
+      <div class="p-2.5 space-y-1">
+        <div class="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+          <span>Szybki dostęp</span>
+          <i class="fa-solid fa-star text-amber-400 text-[10px]"></i>
+        </div>
+
+        <button onclick="navigateToFolder(null)" id="navAllFiles" class="w-full text-left px-2.5 py-1.5 rounded-md text-slate-300 hover:bg-[#282828] hover:text-white flex items-center justify-between text-xs transition">
+          <span class="flex items-center gap-2">
+            <i class="fa-solid fa-hard-drive text-indigo-400 w-4 text-center"></i>
+            <span>Mój Dysk (Główny)</span>
+          </span>
+          <span id="badgeTotalItems" class="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-slate-400 font-mono">0</span>
+        </button>
+      </div>
+
+      <div class="h-px bg-[#2b2b2b] my-1 mx-2"></div>
+
+      <!-- Recursive Folders Tree -->
+      <div class="p-2 pb-1 flex items-center justify-between text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+        <span>Drzewo Sekcji i Folderów</span>
+        <button onclick="createNewFolderModal()" title="Dodaj sekcję" class="hover:text-indigo-400 transition">
+          <i class="fa-solid fa-folder-plus text-xs"></i>
+        </button>
+      </div>
+
+      <div id="sectionNavTree" class="flex-1 overflow-y-auto p-1.5 space-y-0.5">
+        <!-- Dynamic recursive folder tree -->
+      </div>
+
+      <!-- Footer Quick Status -->
+      <div class="p-2.5 border-t border-[#2b2b2b] bg-[#161616] text-[11px] text-slate-400 flex items-center justify-between">
+        <span id="storageStats">0 elementów • Pusta aplikacja</span>
+        <button onclick="confirmClearAllModal()" title="Wyczyść wszystko" class="hover:text-rose-400 transition">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Right Explorer Workspace Panel -->
+    <main class="flex-1 flex flex-col bg-[#181818] overflow-hidden relative">
+
+      <!-- VIEW 1: Folder File Explorer View (Grid / Files View) -->
+      <div id="folderViewPane" class="flex-1 overflow-y-auto p-4 sm:p-6 relative">
+        
+        <!-- Drag & Drop Overlay Zone -->
+        <div id="dragDropOverlay" class="hidden absolute inset-2 bg-indigo-950/80 border-2 border-dashed border-indigo-400 rounded-xl z-40 flex flex-col items-center justify-center text-indigo-200 pointer-events-none backdrop-blur-sm">
+          <i class="fa-solid fa-cloud-arrow-up text-4xl mb-3 text-indigo-400 animate-bounce"></i>
+          <p class="text-base font-bold">Upuść pliki tutaj, aby je wgrać do sekcji</p>
+          <p class="text-xs text-indigo-300 mt-1">Pliki zostaną dodane do wybranego folderu</p>
+        </div>
+
+        <!-- Folder View Header -->
+        <div class="flex items-center justify-between mb-5 pb-3 border-b border-[#2b2b2b]">
+          <div>
+            <h2 id="folderTitle" class="text-base font-bold text-slate-100 flex items-center gap-2">
+              <i class="fa-solid fa-hard-drive text-indigo-400"></i> Mój Dysk
+            </h2>
+            <p id="folderSubtext" class="text-xs text-slate-400 mt-0.5">Twórz foldery w folderach, wgrywaj własne pliki lub przeciągnij je tutaj z komputera.</p>
+          </div>
+          
+          <div class="flex items-center gap-2">
+            <button onclick="triggerFileUpload()" class="px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333333] text-slate-200 text-xs font-medium rounded-md border border-[#383838] transition flex items-center gap-1.5">
+              <i class="fa-solid fa-cloud-arrow-up text-sky-400"></i> Wgraj Plik
+            </button>
+            <button onclick="createNewFolderModal()" class="px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333333] text-slate-200 text-xs font-medium rounded-md border border-[#383838] transition flex items-center gap-1.5">
+              <i class="fa-solid fa-folder-plus text-amber-300"></i> Nowa Sekcja
+            </button>
+            <button onclick="createNewFileModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-md shadow transition flex items-center gap-1.5">
+              <i class="fa-solid fa-plus"></i> Nowy Plik
+            </button>
+          </div>
+        </div>
+
+        <!-- Files & Folders Grid -->
+        <div id="explorerGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <!-- Dynamic cards -->
+        </div>
+
+      </div>
+
+      <!-- VIEW 2: Document Editor Pane with Code Linter -->
+      <div id="editorViewPane" class="flex-1 flex flex-col overflow-hidden hidden">
+        
+        <!-- Document Editor Sub-Header Toolbar -->
+        <div class="h-10 bg-[#1e1e1e] border-b border-[#2b2b2b] px-4 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-3 overflow-hidden">
+            <input type="text" id="activeFileNameInput" onblur="renameActiveFileWithExtension(this.value)" onkeydown="if(event.key==='Enter') this.blur()"
+                   class="bg-transparent text-slate-100 font-bold text-xs sm:text-sm focus:outline-none focus:bg-[#2a2a2a] px-2 py-0.5 rounded border border-transparent focus:border-[#333333] w-64 sm:w-80 truncate"
+                   title="Możesz zmienić nazwę i rozszerzenie pliku, np. dokument tekstowy.txt -> dokument tekstowy.md">
+          </div>
+
+          <!-- Document Quick Actions -->
+          <div class="flex items-center gap-2">
+            <button onclick="insertTemplate('html')" title="Wstaw szablon HTML5" class="px-2.5 py-1 bg-[#2b2b2b] hover:bg-[#333333] text-slate-300 text-xs rounded border border-[#383838] flex items-center gap-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+              <span class="hidden sm:inline">Szablon HTML</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Code Editor Body Area -->
+        <div id="editorWorkspace" class="flex-1 flex overflow-hidden relative">
+
+          <!-- Code Input Pane -->
+          <div id="codePane" class="flex-1 flex flex-col h-full bg-[#161616]">
+            <div class="flex-1 relative flex overflow-hidden">
+              <!-- Line Numbers Column -->
+              <div id="lineNumbers" class="editor-textarea w-11 py-3 bg-[#1a1a1a] text-slate-600 text-xs sm:text-sm text-right pr-2.5 select-none border-r border-[#262626] shrink-0 overflow-hidden">
+                <div>1</div>
+              </div>
+
+              <!-- Textarea Editor -->
+              <textarea id="fileTextarea" oninput="handleTextareaInput()" onkeydown="handleTextareaKeydown(event)" onscroll="syncScroll()"
+                        placeholder="Wpisz treść dokumentu..."
+                        class="editor-textarea flex-1 p-3 bg-transparent text-slate-200 text-xs sm:text-sm font-mono leading-relaxed resize-none focus:outline-none border-none overflow-y-auto whitespace-pre"></textarea>
+            </div>
+
+            <!-- HTML Validation / Error Alert Banner -->
+            <div id="htmlErrorBanner" class="hidden bg-rose-950/90 border-t border-rose-800/80 px-4 py-2 text-xs text-rose-200 flex items-center justify-between shrink-0">
+              <div class="flex items-center gap-2 overflow-hidden truncate">
+                <i class="fa-solid fa-circle-exclamation text-rose-400 text-sm shrink-0"></i>
+                <span id="htmlErrorText" class="font-mono truncate">Wykryto błąd składni!</span>
+              </div>
+              <button onclick="jumpToErrorLine()" class="px-2.5 py-1 bg-rose-800 hover:bg-rose-700 text-white rounded text-[11px] font-medium shrink-0 ml-2 shadow">
+                Przejdź do linii <span id="errorLineNum">0</span>
+              </button>
+            </div>
+
+            <!-- Footer Bar Status Info -->
+            <div class="h-7 bg-[#1c1c1c] border-t border-[#2a2a2a] px-4 flex items-center justify-between text-[11px] text-slate-400 select-none">
+              <div class="flex items-center gap-3 font-mono">
+                <span id="charCount">0 znaków</span>
+                <span id="lineCount">1 linii</span>
+                <span id="htmlStatusBadge" class="text-sky-400 font-sans font-semibold">● Poprawny</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="wordWrapToggle" onchange="toggleWordWrap()" class="rounded bg-[#2a2a2a] border-[#383838] text-indigo-600">
+                  <span>Zawijanie wierszy</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Preview Pane -->
+          <div id="previewPane" class="flex-1 bg-[#1a1a1a] border-l border-[#2a2a2a] flex flex-col h-full hidden">
+            <div class="h-7 bg-[#1f1f1f] border-b border-[#2b2b2b] px-3 flex items-center justify-between text-xs text-slate-400">
+              <span class="font-medium text-indigo-400 flex items-center gap-1.5">
+                <i class="fa-solid fa-play text-[9px]"></i> Podgląd na Żywo
+              </span>
+              <button onclick="refreshPreview()" class="hover:text-slate-200 transition">
+                <i class="fa-solid fa-rotate-right"></i> Odśwież
+              </button>
+            </div>
+            <div class="flex-1 p-3 overflow-y-auto" id="previewContent">
+              <!-- Rendered content -->
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Modal 1: Sekcja / Podfolder -->
+  <div id="folderModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-[#222222] border border-[#383838] rounded-xl shadow-2xl w-full max-w-md p-5 text-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-[#333333]">
+        <h3 id="folderModalTitle" class="text-sm font-bold text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-folder-plus text-amber-400"></i> Utwórz Nową Sekcję / Folder
+        </h3>
+        <button onclick="closeModal('folderModal')" class="text-slate-400 hover:text-white transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="mt-4 space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Lokalizacja (Folder Nadrzędny)</label>
+          <select id="folderParentSelect" class="w-full bg-[#161616] border border-[#333333] focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none">
+            <option value="root">Mój Dysk (Katalog Główny)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Nazwa Sekcji / Folderu</label>
+          <input type="text" id="folderNameInput" onkeydown="if(event.key==='Enter') saveFolder()" placeholder="np. Dokumenty lub Projekt_A" 
+                 class="w-full bg-[#161616] border border-[#333333] focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none">
+        </div>
+      </div>
+      <div class="mt-5 flex justify-end gap-2">
+        <button onclick="closeModal('folderModal')" class="px-3.5 py-1.5 bg-[#2d2d2d] hover:bg-[#383838] text-slate-300 text-xs rounded-lg transition">
+          Anuluj
+        </button>
+        <button onclick="saveFolder()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow transition">
+          Zapisz
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Nowy Plik -->
+  <div id="fileModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-[#222222] border border-[#383838] rounded-xl shadow-2xl w-full max-w-md p-5 text-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-[#333333]">
+        <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+          <i class="fa-solid fa-file-circle-plus text-sky-400"></i> Utwórz Nowy Plik
+        </h3>
+        <button onclick="closeModal('fileModal')" class="text-slate-400 hover:text-white transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="mt-4 space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Docelowy Folder / Sekcja</label>
+          <select id="fileParentSelect" class="w-full bg-[#161616] border border-[#333333] focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none">
+            <option value="root">Mój Dysk (Katalog Główny)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Nazwa Pliku (np. dokument tekstowy)</label>
+          <input type="text" id="fileNameInput" onkeydown="if(event.key==='Enter') saveFile()" placeholder="np. dokument tekstowy lub index" 
+                 class="w-full bg-[#161616] border border-[#333333] focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Rozszerzenie Pliku</label>
+          <input type="text" id="fileExtInput" placeholder=".txt, .html, .mp3 lub dowolne inne" 
+                class="w-full bg-[#161616] border border-[#333333] focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none">
+        </div>
+      </div>
+      <div class="mt-5 flex justify-end gap-2">
+        <button onclick="closeModal('fileModal')" class="px-3.5 py-1.5 bg-[#2d2d2d] hover:bg-[#383838] text-slate-300 text-xs rounded-lg transition">
+          Anuluj
+        </button>
+        <button onclick="saveFile()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow transition">
+          Utwórz plik
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Confirmation Dialog -->
+  <div id="confirmModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-[#222222] border border-[#383838] rounded-xl shadow-2xl w-full max-w-sm p-5 text-slate-200">
+      <div class="flex items-center gap-3 pb-3 border-b border-[#333333]">
+        <div class="w-8 h-8 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div>
+          <h3 id="confirmModalTitle" class="text-sm font-bold text-slate-100">Potwierdzenie operacji</h3>
+        </div>
+      </div>
+      <p id="confirmModalText" class="mt-3 text-xs text-slate-300 leading-relaxed">Czy na pewno chcesz wykonać tę akcję?</p>
+      <div class="mt-5 flex justify-end gap-2">
+        <button onclick="closeModal('confirmModal')" class="px-3.5 py-1.5 bg-[#2d2d2d] hover:bg-[#383838] text-slate-300 text-xs rounded-lg transition">
+          Anuluj
+        </button>
+        <button id="btnConfirmAction" class="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-lg shadow transition">
+          Usuń
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Box Container -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    // App State
+    let appData = {
+      items: [], // Array of { id, parentId, type: 'folder'|'file', name, ext, content }
+      currentFolderId: null, // null = root ("Mój Dysk")
+      activeFileId: null,
+      viewMode: 'edit',
+      historyStack: [null]
+    };
+
+    let currentErrorLine = 0;
+
+    // LocalStorage Synchronization
+    function saveToLocalStorage() {
+      try {
+        localStorage.setItem('docucraft_studio_data', JSON.stringify({
+          items: appData.items,
+          currentFolderId: appData.currentFolderId
+        }));
+      } catch (e) {
+        console.error("Błąd zapisu do LocalStorage:", e);
+      }
+    }
+
+    function loadFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem('docucraft_studio_data');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.items)) {
+            appData.items = parsed.items;
+            appData.currentFolderId = parsed.currentFolderId || null;
+          }
+        }
+      } catch (e) {
+        console.error("Błąd odczytu z LocalStorage:", e);
+      }
+    }
+
+    function populateParentSelects() {
+      const folderSelects = [document.getElementById('folderParentSelect'), document.getElementById('fileParentSelect')];
+      folderSelects.forEach(select => {
+        if (!select) return;
+        select.innerHTML = '<option value="root">Mój Dysk (Katalog Główny)</option>';
+        
+        const folders = appData.items.filter(i => i.type === 'folder');
+        folders.forEach(f => {
+          const opt = document.createElement('option');
+          opt.value = f.id;
+          opt.textContent = getFolderPathName(f.id);
+          select.appendChild(opt);
+        });
+      });
+    }
+
+    function getFolderPathName(folderId) {
+      let path = [];
+      let current = appData.items.find(i => i.id === folderId);
+      while (current) {
+        path.unshift(current.name);
+        current = appData.items.find(i => i.id === current.parentId);
+      }
+      return path.join(' / ');
+    }
+
+    function createNewFolderModal(parentId = null) {
+      populateParentSelects();
+      const modal = document.getElementById('folderModal');
+      const parentSelect = document.getElementById('folderParentSelect');
+      const nameInput = document.getElementById('folderNameInput');
+      
+      const targetParent = parentId || appData.currentFolderId;
+      if (parentSelect) parentSelect.value = targetParent ? targetParent : 'root';
+      if (nameInput) nameInput.value = '';
+      if (modal) modal.classList.remove('hidden');
+      if (nameInput) setTimeout(() => nameInput.focus(), 100);
+    }
+
+    function saveFolder() {
+      const nameInput = document.getElementById('folderNameInput');
+      const parentSelect = document.getElementById('folderParentSelect');
+      const name = sanitizeFileName(nameInput ? nameInput.value : '');
+      if (!name) {
+        showToast('Podaj nazwę folderu!', 'error');
+        return;
+      }
+      
+      const val = parentSelect ? parentSelect.value : 'root';
+      const parentId = (val && val !== 'root') ? val : null;
+      
+      const newFolder = {
+        id: 'fol_' + Date.now() + Math.random().toString(36).substring(2, 6),
+        parentId: parentId,
+        type: 'folder',
+        name: name
+      };
+      
+      appData.items.push(newFolder);
+      saveToLocalStorage();
+      closeModal('folderModal');
+      renderExplorerView();
+      showToast(`Utworzono folder "${name}"`, 'info');
+    }
+
+    function promptRenameFolder(folderId) {
+      const folder = appData.items.find(i => i.id === folderId && i.type === 'folder');
+      if (!folder) return;
+
+      const newName = prompt('Podaj nową nazwę folderu / sekcji:', folder.name);
+      if (newName === null) return;
+
+      const sanitized = sanitizeFileName(newName);
+      if (!sanitized) {
+        showToast('Nazwa folderu nie może być pusta!', 'error');
+        return;
+      }
+
+      folder.name = sanitized;
+      saveToLocalStorage();
+      renderExplorerView();
+      showToast(`Zmieniono nazwę folderu na "${sanitized}"`, 'info');
+    }
+
+    function createNewFileModal(parentId = null) {
+      populateParentSelects();
+      const modal = document.getElementById('fileModal');
+      const parentSelect = document.getElementById('fileParentSelect');
+      const nameInput = document.getElementById('fileNameInput');
+      const extInput = document.getElementById('fileExtInput');
+      
+      const targetParent = parentId || appData.currentFolderId;
+      if (parentSelect) parentSelect.value = targetParent ? targetParent : 'root';
+      if (nameInput) nameInput.value = '';
+      if (extInput) extInput.value = '.txt';
+      if (modal) modal.classList.remove('hidden');
+      if (nameInput) setTimeout(() => nameInput.focus(), 100);
+    }
+
+    function saveFile() {
+      const nameInput = document.getElementById('fileNameInput');
+      const extInput = document.getElementById('fileExtInput');
+      const parentSelect = document.getElementById('fileParentSelect');
+      
+      let rawName = nameInput ? nameInput.value.trim() : '';
+      let rawExt = extInput ? extInput.value.trim() : '.txt';
+
+      if (!rawName) {
+        showToast('Podaj nazwę pliku!', 'error');
+        return;
+      }
+
+      // Jeżeli użytkownik podał rozszerzenie w polu nazwy (np. "dokument tekstowy.txt")
+      const parsed = parseFileNameAndExtension(rawName, rawExt);
+      const name = sanitizeFileName(parsed.name);
+      let ext = parsed.ext;
+
+      if (!ext.startsWith('.')) ext = '.' + ext;
+      
+      const val = parentSelect ? parentSelect.value : 'root';
+      const parentId = (val && val !== 'root') ? val : null;
+      
+      const newFile = {
+        id: 'file_' + Date.now() + Math.random().toString(36).substring(2, 6),
+        parentId: parentId,
+        type: 'file',
+        name: name,
+        ext: ext,
+        content: ''
+      };
+      
+      appData.items.push(newFile);
+      saveToLocalStorage();
+      closeModal('fileModal');
+      renderExplorerView();
+      openFile(newFile.id);
+      showToast(`Utworzono plik "${name}${ext}"`, 'info');
+    }
+
+    function parseFileNameAndExtension(fullName, defaultExt = '.txt') {
+      const lastDot = fullName.lastIndexOf('.');
+      if (lastDot > 0 && lastDot < fullName.length - 1) {
+        return {
+          name: fullName.substring(0, lastDot),
+          ext: fullName.substring(lastDot).toLowerCase()
+        };
+      }
+      return {
+        name: fullName,
+        ext: defaultExt.startsWith('.') ? defaultExt.toLowerCase() : '.' + defaultExt.toLowerCase()
+      };
+    }
+
+    function renderExplorerView() {
+      renderSidebarTree();
+      renderBreadcrumbPath();
+      renderCurrentFolderGrid();
+      updateStatsAndBadges();
+    }
+
+    function renderSidebarTree() {
+      const container = document.getElementById('sectionNavTree');
+      if (!container) return;
+      container.innerHTML = '';
+
+      function buildTree(targetParentId, level) {
+        const folders = appData.items.filter(i => i.type === 'folder' && i.parentId === targetParentId);
+        
+        folders.forEach(f => {
+          const btn = document.createElement('button');
+          const isSelected = appData.currentFolderId === f.id;
+          btn.className = `w-full text-left px-2 py-1.5 rounded-md flex items-center justify-between text-xs transition ${
+            isSelected ? 'bg-indigo-600/30 text-indigo-300 font-semibold border border-indigo-500/30' : 'text-slate-300 hover:bg-[#282828] hover:text-white'
+          }`;
+          btn.style.paddingLeft = `${(level * 12) + 8}px`;
+          
+          const childCount = appData.items.filter(i => i.parentId === f.id).length;
+          
+          btn.innerHTML = `
+            <span class="flex items-center gap-1.5 truncate">
+              <i class="fa-solid fa-folder text-amber-400 text-xs shrink-0"></i>
+              <span class="truncate">${escapeHtml(f.name)}</span>
+            </span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded bg-[#2a2a2a] text-slate-400 font-mono shrink-0">${childCount}</span>
+          `;
+          btn.onclick = () => navigateToFolder(f.id);
+          container.appendChild(btn);
+
+          buildTree(f.id, level + 1);
+        });
+      }
+
+      buildTree(null, 0);
+    }
+
+    function renderBreadcrumbPath() {
+      const container = document.getElementById('breadcrumbPath');
+      if (!container) return;
+
+      let html = `<button onclick="navigateToFolder(null)" class="hover:text-indigo-400 font-medium flex items-center gap-1"><i class="fa-solid fa-hard-drive text-indigo-400"></i> Mój Dysk</button>`;
+
+      if (appData.currentFolderId) {
+        let chain = [];
+        let curr = appData.items.find(i => i.id === appData.currentFolderId);
+        while (curr) {
+          chain.unshift(curr);
+          curr = appData.items.find(i => i.id === curr.parentId);
+        }
+
+        chain.forEach(f => {
+          html += ` <i class="fa-solid fa-chevron-right text-[10px] text-slate-600 mx-0.5"></i> `;
+          html += `<button onclick="navigateToFolder('${f.id}')" class="hover:text-indigo-400 font-medium truncate max-w-[120px]">${escapeHtml(f.name)}</button>`;
+        });
+      }
+
+      container.innerHTML = html;
+
+      const btnNavBack = document.getElementById('btnNavBack');
+      const btnNavUp = document.getElementById('btnNavUp');
+      
+      if (btnNavBack) btnNavBack.disabled = appData.historyStack.length <= 1;
+      if (btnNavUp) {
+        const curr = appData.items.find(i => i.id === appData.currentFolderId);
+        btnNavUp.disabled = !curr;
+      }
+    }
+
+    function navigateToFolder(folderId) {
+      if (appData.currentFolderId !== folderId) {
+        appData.historyStack.push(folderId);
+      }
+      appData.currentFolderId = folderId;
+      appData.activeFileId = null;
+
+      document.getElementById('editorViewPane').classList.add('hidden');
+      document.getElementById('viewModeGroup').classList.add('hidden');
+      document.getElementById('folderViewPane').classList.remove('hidden');
+      document.getElementById('activeFileExtBadge').classList.add('hidden');
+
+      renderExplorerView();
+    }
+
+    function navigateBack() {
+      if (appData.historyStack.length > 1) {
+        appData.historyStack.pop();
+        const prev = appData.historyStack[appData.historyStack.length - 1];
+        navigateToFolder(prev);
+      }
+    }
+
+    function navigateUp() {
+      if (appData.currentFolderId) {
+        const curr = appData.items.find(i => i.id === appData.currentFolderId);
+        const parentId = curr ? curr.parentId : null;
+        navigateToFolder(parentId);
+      }
+    }
+
+    function renderCurrentFolderGrid() {
+      const grid = document.getElementById('explorerGrid');
+      const title = document.getElementById('folderTitle');
+      const subtext = document.getElementById('folderSubtext');
+      const search = document.getElementById('searchInput');
+      const query = search ? search.value.trim().toLowerCase() : '';
+
+      if (!grid) return;
+
+      const currentFolder = appData.items.find(i => i.id === appData.currentFolderId);
+      if (title) {
+        title.innerHTML = currentFolder 
+          ? `<i class="fa-solid fa-folder-open text-amber-400"></i> ${escapeHtml(currentFolder.name)} 
+             <button onclick="promptRenameFolder('${currentFolder.id}')" title="Zmień nazwę tej sekcji" class="ml-2 text-slate-400 hover:text-amber-300 transition text-xs">
+               <i class="fa-solid fa-pen"></i>
+             </button>`
+          : `<i class="fa-solid fa-hard-drive text-indigo-400"></i> Mój Dysk`;
+      }
+      if (subtext) {
+        subtext.textContent = currentFolder 
+          ? `Zawartość sekcji "${currentFolder.name}". Twórz pliki, podfoldery lub przeciągaj materiały.`
+          : `Główny katalog dysku. Twórz sekcje, dodawaj pliki lub importuj z komputera.`;
+      }
+
+      let items = appData.items.filter(i => i.parentId === appData.currentFolderId);
+      if (query) {
+        items = appData.items.filter(i => i.name.toLowerCase().includes(query) || (i.ext && i.ext.toLowerCase().includes(query)));
+      }
+
+      if (items.length === 0) {
+        grid.innerHTML = `
+          <div class="col-span-full py-16 flex flex-col items-center justify-center text-slate-500 text-center">
+            <i class="fa-solid fa-folder-open text-5xl mb-3 text-slate-700"></i>
+            <p class="text-sm font-medium text-slate-400">${query ? 'Brak wyników wyszukiwania' : 'Ten folder jest pusty'}</p>
+            <p class="text-xs text-slate-600 mt-1">${query ? 'Spróbuj wpisać inną frazę' : 'Utwórz nową sekcję lub dodaj plik przyciskami powyżej'}</p>
+          </div>
+        `;
+        return;
+      }
+
+      grid.innerHTML = items.map(item => {
+        if (item.type === 'folder') {
+          const childCount = appData.items.filter(i => i.parentId === item.id).length;
+          return `
+            <div onclick="navigateToFolder('${item.id}')" class="bg-[#222222] hover:bg-[#2a2a2a] border border-[#303030] hover:border-amber-500/50 rounded-xl p-3.5 flex items-center justify-between cursor-pointer group transition shadow-md">
+              <div class="flex items-center gap-3 overflow-hidden">
+                <div class="w-10 h-10 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                  <i class="fa-solid fa-folder text-lg"></i>
+                </div>
+                <div class="overflow-hidden">
+                  <h4 class="text-xs font-bold text-slate-200 truncate group-hover:text-amber-300 transition">${escapeHtml(item.name)}</h4>
+                  <p class="text-[10px] text-slate-400 mt-0.5 font-mono">${childCount} elementów</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-1">
+                <button onclick="event.stopPropagation(); promptRenameFolder('${item.id}')" title="Zmień nazwę sekcji" class="p-1.5 text-slate-500 hover:text-amber-300 hover:bg-[#333333] rounded transition">
+                  <i class="fa-solid fa-pen text-xs"></i>
+                </button>
+                <button onclick="event.stopPropagation(); confirmDeleteFolder('${item.id}')" title="Usuń sekcję" class="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-[#333333] rounded transition">
+                  <i class="fa-solid fa-trash-can text-xs"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        } else {
+          const isImg = isImageExt(item.ext);
+          const isAudio = isAudioExt(item.ext);
+          
+          let iconClass = 'fa-file-lines text-sky-400';
+          if (isImg) iconClass = 'fa-image text-emerald-400';
+          if (isAudio) iconClass = 'fa-music text-purple-400';
+
+          const badgeColor = getExtBadgeColor(item.ext);
+          const sizeKb = Math.round(((item.content || '').length * 3) / 4 / 1024) || 1;
+
+          return `
+            <div onclick="openFile('${item.id}')" class="bg-[#222222] hover:bg-[#2a2a2a] border border-[#303030] hover:border-indigo-500/50 rounded-xl p-3.5 flex items-center justify-between cursor-pointer group transition shadow-md">
+              <div class="flex items-center gap-3 overflow-hidden">
+                <div class="w-10 h-10 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                  <i class="fa-solid ${iconClass} text-lg"></i>
+                </div>
+                <div class="overflow-hidden">
+                  <div class="flex items-center gap-1.5 truncate">
+                    <h4 class="text-xs font-bold text-slate-200 truncate group-hover:text-indigo-300 transition">${escapeHtml(item.name)}</h4>
+                    <span class="text-[9px] font-mono px-1 rounded ${badgeColor}">${escapeHtml(item.ext)}</span>
+                  </div>
+                  <p class="text-[10px] text-slate-400 mt-0.5 font-mono">${sizeKb} KB • ${isAudio ? 'Kliknij aby odtworzyć' : 'Kliknij aby edytować'}</p>
+                </div>
+              </div>
+              <button onclick="event.stopPropagation(); confirmDeleteFile('${item.id}')" title="Usuń plik" class="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-[#333333] rounded transition">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+              </button>
+            </div>
+          `;
+        }
+      }).join('');
+    }
+
+    function updateStatsAndBadges() {
+      const totalItems = appData.items.length;
+      const badge = document.getElementById('badgeTotalItems');
+      const stats = document.getElementById('storageStats');
+
+      if (badge) badge.textContent = totalItems;
+      if (stats) {
+        const foldersCount = appData.items.filter(i => i.type === 'folder').length;
+        const filesCount = appData.items.filter(i => i.type === 'file').length;
+        stats.textContent = `${foldersCount} folderów, ${filesCount} plików`;
+      }
+    }
+
+    function confirmDeleteFolder(folderId) {
+      const folder = appData.items.find(i => i.id === folderId);
+      if (!folder) return;  
+      
+      const modal = document.getElementById('confirmModal');
+      const title = document.getElementById('confirmModalTitle');
+      const text = document.getElementById('confirmModalText');
+      const btn = document.getElementById('btnConfirmAction');
+
+      if (title) title.textContent = 'Usuń sekcję / folder';
+      if (text) text.textContent = `Czy na pewno chcesz usunąć folder "${folder.name}" wraz ze wszystkimi plikami i podfolderami?`;
+      
+      if (btn) {
+        btn.onclick = () => {
+          deleteFolderRecursive(folderId);
+          saveToLocalStorage();
+          closeModal('confirmModal');
+          renderExplorerView();
+          showToast(`Usunięto folder "${folder.name}"`, 'info');
+        };
+      }
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function deleteFolderRecursive(folderId) {
+      const children = appData.items.filter(i => i.parentId === folderId);
+      children.forEach(child => {
+        if (child.type === 'folder') {
+          deleteFolderRecursive(child.id);
+        } else {
+          appData.items = appData.items.filter(i => i.id !== child.id);
+        }
+      });
+      appData.items = appData.items.filter(i => i.id !== folderId);
+    }
+
+    function confirmDeleteFile(fileId) {
+      const file = appData.items.find(i => i.id === fileId);
+      if (!file) return;
+
+      const modal = document.getElementById('confirmModal');
+      const title = document.getElementById('confirmModalTitle');
+      const text = document.getElementById('confirmModalText');
+      const btn = document.getElementById('btnConfirmAction');
+
+      if (title) title.textContent = 'Usuń plik';
+      if (text) text.textContent = `Czy na pewno chcesz usunąć plik "${file.name}${file.ext}"?`;
+
+      if (btn) {
+        btn.onclick = () => {
+          appData.items = appData.items.filter(i => i.id !== fileId);
+          if (appData.activeFileId === fileId) {
+            appData.activeFileId = null;
+            navigateToFolder(appData.currentFolderId);
+          } else {
+            renderExplorerView();
+          }
+          saveToLocalStorage();
+          closeModal('confirmModal');
+          showToast(`Usunięto plik "${file.name}${file.ext}"`, 'info');
+        };
+      }
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function confirmClearAllModal() {
+      const modal = document.getElementById('confirmModal');
+      const title = document.getElementById('confirmModalTitle');
+      const text = document.getElementById('confirmModalText');
+      const btn = document.getElementById('btnConfirmAction');
+
+      if (title) title.textContent = 'Wyczyść wszystkie dane';
+      if (text) text.textContent = 'Czy na pewno chcesz usunąć wszystkie pliki i sekcje z aplikacji?';
+
+      if (btn) {
+        btn.onclick = () => {
+          appData.items = [];
+          appData.activeFileId = null;
+          appData.currentFolderId = null;
+          appData.historyStack = [null];
+          saveToLocalStorage();
+          closeModal('confirmModal');
+          navigateToFolder(null);
+          showToast('Wyczyszczono wszystkie pliki i sekcje!', 'info');
+        };
+      }
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function getActiveFileObject() {
+      return appData.items.find(i => i.id === appData.activeFileId && i.type === 'file');
+    }
+
+    function openFile(fileId) {
+      const file = appData.items.find(i => i.id === fileId && i.type === 'file');
+      if (!file) return;
+
+      appData.activeFileId = fileId;
+      appData.currentFolderId = file.parentId;
+
+      document.getElementById('folderViewPane').classList.add('hidden');
+      document.getElementById('editorViewPane').classList.remove('hidden');
+      document.getElementById('viewModeGroup').classList.remove('hidden');
+      
+      const extBadge = document.getElementById('activeFileExtBadge');
+      if (extBadge) {
+        extBadge.classList.remove('hidden');
+        extBadge.textContent = file.ext;
+      }
+
+      // Wpisz pełną nazwę wraz z rozszerzeniem do pola tekstowego edytora
+      document.getElementById('activeFileNameInput').value = `${file.name}${file.ext}`;
+
+      const textarea = document.getElementById('fileTextarea');
+      textarea.value = file.content || '';
+
+      renderExplorerView();
+      handleTextareaInput();
+
+      if (isImageExt(file.ext) || isAudioExt(file.ext)) {
+        switchViewMode('preview');
+      } else {
+        switchViewMode(appData.viewMode);
+      }
+    }
+
+    function renameActiveFileWithExtension(fullInput) {
+      const file = getActiveFileObject();
+      if (!file) return;
+
+      const trimmed = fullInput.trim();
+      if (!trimmed) {
+        showToast('Nazwa pliku nie może być pusta', 'error');
+        document.getElementById('activeFileNameInput').value = `${file.name}${file.ext}`;
+        return;
+      }
+
+      const parsed = parseFileNameAndExtension(trimmed, file.ext);
+      const sanitizedName = sanitizeFileName(parsed.name);
+
+      if (!sanitizedName) {
+        showToast('Nazwa pliku jest nieprawidłowa', 'error');
+        document.getElementById('activeFileNameInput').value = `${file.name}${file.ext}`;
+        return;
+      }
+
+      file.name = sanitizedName;
+      file.ext = parsed.ext;
+
+      // Zaktualizuj input oraz badge w belce nawigacji
+      document.getElementById('activeFileNameInput').value = `${file.name}${file.ext}`;
+      const extBadge = document.getElementById('activeFileExtBadge');
+      if (extBadge) {
+        extBadge.textContent = file.ext;
+      }
+
+      saveToLocalStorage();
+      renderExplorerView();
+      validateCodeSyntax();
+      showToast(`Zmieniono nazwę pliku na "${file.name}${file.ext}"`, 'info');
+    }
+
+    function handleTextareaInput() {
+      const file = getActiveFileObject();
+      const textarea = document.getElementById('fileTextarea');
+      if (!file || !textarea) return;
+
+      file.content = textarea.value;
+      saveToLocalStorage();
+
+      updateLineNumbers();
+      updateEditorStats();
+      validateCodeSyntax();
+
+      if (appData.viewMode === 'preview' || appData.viewMode === 'split') {
+        refreshPreview();
+      }
+    }
+
+    function handleTextareaKeydown(e) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const textarea = document.getElementById('fileTextarea');
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+
+        textarea.value = textarea.value.substring(0, start) + '  ' + textarea.value.substring(end);
+        textarea.selectionStart = textarea.selectionEnd = start + 2;
+        handleTextareaInput();
+      }
+    }
+
+    function updateLineNumbers() {
+      const textarea = document.getElementById('fileTextarea');
+      const lineNumbers = document.getElementById('lineNumbers');
+      if (!textarea || !lineNumbers) return;
+
+      const lines = textarea.value.split('\n');
+      const lineCount = lines.length;
+
+      let html = '';
+      for (let i = 1; i <= lineCount; i++) {
+        html += `<div>${i}</div>`;
+      }
+      lineNumbers.innerHTML = html;
+    }
+
+    function syncScroll() {
+      const textarea = document.getElementById('fileTextarea');
+      const lineNumbers = document.getElementById('lineNumbers');
+      if (textarea && lineNumbers) {
+        lineNumbers.scrollTop = textarea.scrollTop;
+      }
+    }
+
+    function updateEditorStats() {
+      const textarea = document.getElementById('fileTextarea');
+      if (!textarea) return;
+
+      const text = textarea.value;
+      const chars = text.length;
+      const lines = text.split('\n').length;
+
+      document.getElementById('charCount').textContent = `${chars} znaków`;
+      document.getElementById('lineCount').textContent = `${lines} linii`;
+    }
+
+    function toggleWordWrap() {
+      const textarea = document.getElementById('fileTextarea');
+      const toggle = document.getElementById('wordWrapToggle');
+      if (textarea && toggle) {
+        textarea.style.whiteSpace = toggle.checked ? 'pre-wrap' : 'pre';
+      }
+    }
+
+    function validateCodeSyntax() {
+      const file = getActiveFileObject();
+      const banner = document.getElementById('htmlErrorBanner');
+      const statusBadge = document.getElementById('htmlStatusBadge');
+      const errorText = document.getElementById('htmlErrorText');
+      const errorLineNum = document.getElementById('errorLineNum');
+
+      if (!file) return;
+
+      const content = file.content || '';
+      const ext = (file.ext || '').toLowerCase();
+
+      let error = null;
+
+      if (ext === '.html' || ext === '.htm') {
+        error = checkHtmlErrors(content);
+      } else if (ext === '.json') {
+        error = checkJsonErrors(content);
+      } else if (ext === '.css') {
+        error = checkCssErrors(content);
+      } else if (ext === '.js') {
+        error = checkJsErrors(content);
+      }
+
+      if (error) {
+        currentErrorLine = error.line;
+        if (banner) banner.classList.remove('hidden');
+        if (errorText) errorText.textContent = error.message;
+        if (errorLineNum) errorLineNum.textContent = error.line;
+        if (statusBadge) {
+          statusBadge.textContent = `● Błąd w linii ${error.line}`;
+          statusBadge.className = 'text-rose-400 font-sans font-semibold';
+        }
+      } else {
+        currentErrorLine = 0;
+        if (banner) banner.classList.add('hidden');
+        if (statusBadge) {
+          statusBadge.textContent = `● ${ext.toUpperCase().replace('.','')} Poprawny`;
+          statusBadge.className = 'text-sky-400 font-sans font-semibold';
+        }
+      }
+    }
+
+    function checkHtmlErrors(code) {
+      if (!code.trim()) return null;
+      const lines = code.split('\n');
+      const tagStack = [];
+      const selfClosing = ['img', 'br', 'hr', 'input', 'meta', 'link', 'source'];
+
+      for (let l = 0; l < lines.length; l++) {
+        const lineText = lines[l];
+        const regex = /<\/?([a-zA-Z0-9]+)(\s+[^>]*)?\s*\/?>/g;
+        let match;
+
+        while ((match = regex.exec(lineText)) !== null) {
+          const fullTag = match[0];
+          const tagName = match[1].toLowerCase();
+
+          if (selfClosing.includes(tagName) || fullTag.endsWith('/>')) {
+            continue;
+          }
+
+          if (fullTag.startsWith('</')) {
+            if (tagStack.length === 0) {
+              return { line: l + 1, message: `Błąd HTML: Zamykający tag </${tagName}> bez otwierającego!` };
+            }
+            const last = tagStack.pop();
+            if (last.name !== tagName) {
+              return { line: l + 1, message: `Błąd HTML: Oczekiwano </${last.name}>, wykryto </${tagName}>!` };
+            }
+          } else {
+            tagStack.push({ name: tagName, line: l + 1 });
+          }
+        }
+      }
+
+      if (tagStack.length > 0) {
+        const unclosed = tagStack[tagStack.length - 1];
+        return { line: unclosed.line, message: `Błąd HTML: Niezamknięty znacznik <${unclosed.name}> z linii ${unclosed.line}!` };
+      }
+
+      return null;
+    }
+
+    function checkJsonErrors(code) {
+      if (!code.trim()) return null;
+      try {
+        JSON.parse(code);
+        return null;
+      } catch (err) {
+        const match = err.message.match(/at position (\d+)/);
+        let lineNum = 1;
+        if (match) {
+          const pos = parseInt(match[1], 10);
+          lineNum = code.substring(0, pos).split('\n').length;
+        }
+        return { line: lineNum, message: `Błąd JSON: ${err.message}` };
+      }
+    }
+
+    function checkCssErrors(code) {
+      if (!code.trim()) return null;
+      const lines = code.split('\n');
+      let braceCount = 0;
+      let openLine = 1;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        for (let char of line) {
+          if (char === '{') {
+            if (braceCount === 0) openLine = i + 1;
+            braceCount++;
+          } else if (char === '}') {
+            braceCount--;
+            if (braceCount < 0) {
+              return { line: i + 1, message: 'Błąd CSS: Nadmiarowy nawias zamykający "}"!' };
+            }
+          }
+        }
+      }
+
+      if (braceCount > 0) {
+        return { line: openLine, message: `Błąd CSS: Niezamknięta klamra "{" z linii ${openLine}!` };
+      }
+
+      return null;
+    }
+
+    function checkJsErrors(code) {
+      if (!code.trim()) return null;
+      try {
+        new Function(code);
+        return null;
+      } catch (err) {
+        let lineNum = 1;
+        if (err.stack) {
+          const match = err.stack.match(/<anonymous>:(\d+):(\d+)/);
+          if (match) {
+            lineNum = parseInt(match[1], 10) - 2;
+            if (lineNum < 1) lineNum = 1;
+          }
+        }
+        return { line: lineNum, message: `Błąd JavaScript: ${err.message}` };
+      }
+    }
+
+    function jumpToErrorLine() {
+      if (!currentErrorLine) return;
+      const textarea = document.getElementById('fileTextarea');
+      if (!textarea) return;
+
+      const lines = textarea.value.split('\n');
+      let charIndex = 0;
+      for (let i = 0; i < Math.min(currentErrorLine - 1, lines.length); i++) {
+        charIndex += lines[i].length + 1;
+      }
+
+      textarea.focus();
+      textarea.setSelectionRange(charIndex, charIndex + (lines[currentErrorLine - 1] ? lines[currentErrorLine - 1].length : 0));
+
+      const lineHeight = 22.4;
+      textarea.scrollTop = (currentErrorLine - 3) * lineHeight;
+    }
+
+    function switchViewMode(mode) {
+      appData.viewMode = mode;
+      const codePane = document.getElementById('codePane');
+      const previewPane = document.getElementById('previewPane');
+      const btnEdit = document.getElementById('btnModeEdit');
+      const btnSplit = document.getElementById('btnModeSplit');
+      const btnPreview = document.getElementById('btnModePreview');
+
+      const activeClass = 'px-2 py-1 text-[11px] rounded font-medium text-white bg-indigo-600';
+      const inactiveClass = 'px-2 py-1 text-[11px] rounded font-medium text-slate-400 hover:text-slate-200';
+
+      if (btnEdit) btnEdit.className = mode === 'edit' ? activeClass : inactiveClass;
+      if (btnSplit) btnSplit.className = mode === 'split' ? activeClass : inactiveClass;
+      if (btnPreview) btnPreview.className = mode === 'preview' ? activeClass : inactiveClass;
+
+      if (mode === 'edit') {
+        codePane.classList.remove('hidden');
+        codePane.classList.add('flex-1');
+        previewPane.classList.add('hidden');
+      } else if (mode === 'preview') {
+        codePane.classList.add('hidden');
+        previewPane.classList.remove('hidden');
+        previewPane.classList.add('flex-1');
+        refreshPreview();
+      } else if (mode === 'split') {
+        codePane.classList.remove('hidden');
+        codePane.classList.add('flex-1');
+        previewPane.classList.remove('hidden');
+        previewPane.classList.add('flex-1');
+        refreshPreview();
+      }
+    }
+
+    function refreshPreview() {
+      const file = getActiveFileObject();
+      const container = document.getElementById('previewContent');
+      if (!file || !container) return;
+
+      const content = file.content || '';
+      const ext = (file.ext || '').toLowerCase();
+
+      if (isAudioExt(ext)) {
+        if (content.startsWith('data:audio') || content.startsWith('http')) {
+          container.innerHTML = `
+            <div class="h-full flex flex-col items-center justify-center p-6 bg-[#121212] rounded-xl border border-[#2d2d2d] shadow-2xl">
+              <div class="w-24 h-24 mb-6 rounded-full bg-purple-600/20 text-purple-400 border border-purple-500/30 flex items-center justify-center shadow-inner animate-pulse">
+                <i class="fa-solid fa-music text-4xl"></i>
+              </div>
+              <h3 class="text-base font-bold text-slate-100 mb-1 text-center truncate max-w-xs">${escapeHtml(file.name)}</h3>
+              <p class="text-xs text-purple-300 font-mono mb-6 uppercase tracking-wider">${escapeHtml(file.ext)} Audio File</p>
+              
+              <div class="w-full max-w-md bg-[#1e1e1e] p-3 rounded-2xl border border-[#333333] shadow-lg">
+                <audio controls class="w-full rounded-lg outline-none">
+                  <source src="${content}" type="audio/mpeg">
+                  Twoja przeglądarka nie wspiera elementu audio.
+                </audio>
+              </div>
+            </div>
+          `;
+        } else {
+          container.innerHTML = `<pre class="text-xs font-mono text-slate-300 p-2 whitespace-pre-wrap">${escapeHtml(content)}</pre>`;
+        }
+      } else if (isImageExt(ext)) {
+        if (content.startsWith('data:image') || content.startsWith('http') || ext === '.svg') {
+          container.innerHTML = `
+            <div class="h-full flex flex-col items-center justify-center p-4 bg-[radial-gradient(#2a2a2a_1px,transparent_1px)] [background-size:16px_16px] rounded-lg border border-[#2b2b2b]">
+              <div class="max-h-[80%] max-w-[90%] overflow-auto flex items-center justify-center p-3 bg-[#121212]/90 backdrop-blur rounded-xl border border-[#333333] shadow-2xl">
+                <img src="${content}" alt="${escapeHtml(file.name)}" class="max-h-[55vh] max-w-full object-contain rounded" onerror="this.onerror=null; this.src='https://placehold.co/400x300/181818/ffffff?text=B%C5%82%C4%85d+Wczytywania+Obrazu';" />
+              </div>
+            </div>
+          `;
+        } else {
+          container.innerHTML = `<pre class="text-xs font-mono text-slate-300 p-2 whitespace-pre-wrap">${escapeHtml(content)}</pre>`;
+        }
+      } else if (ext === '.html' || ext === '.htm') {
+        container.innerHTML = `<iframe id="previewIframe" class="w-full h-full bg-white rounded-lg border border-slate-800"></iframe>`;
+        const iframe = document.getElementById('previewIframe');
+        if (iframe) {
+          const doc = iframe.contentDocument || iframe.contentWindow.document;
+          doc.open();
+          doc.write(content);
+          doc.close();
+        }
+      } else if (ext === '.md') {
+        const parsed = typeof marked !== 'undefined' ? marked.parse(content) : escapeHtml(content);
+        container.innerHTML = `<div class="prose prose-invert max-w-none text-slate-200 text-xs sm:text-sm p-2">${parsed}</div>`;
+      } else {
+        container.innerHTML = `<pre class="text-xs font-mono text-slate-300 p-2 whitespace-pre-wrap">${escapeHtml(content)}</pre>`;
+      }
+    }
+
+    function insertTemplate(type) {
+      const textarea = document.getElementById('fileTextarea');
+      if (!textarea) return;
+
+      if (type === 'html') {
+        textarea.value = `<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nowy Dokument</title>
+  <style>
+    body { font-family: sans-serif; background: #f8fafc; padding: 2rem; color: #0f172a; }
+    h1 { color: #2563eb; }
+  </style>
+</head>
+<body>
+  <h1>Witaj w DocuCraft Studio</h1>
+  <p>To jest Twój szablon HTML5.</p>
+</body>
+</html>`;
+        handleTextareaInput();
+        showToast('Wstawiono szablon HTML5', 'info');
+      }
+    }
+
+    function copyActiveContent() {
+      const textarea = document.getElementById('fileTextarea');
+      if (!textarea) return;
+
+      textarea.select();
+      document.execCommand('copy');
+      showToast('Skopiowano treść do schowka!', 'info');
+    }
+
+    function downloadActiveFile() {
+      const file = getActiveFileObject();
+      if (!file) {
+        showToast('Brak aktywnego pliku do pobrania', 'error');
+        return;
+      }
+
+      const blob = new Blob([file.content || ''], { type: 'text/plain;charset=utf-8' });
+      saveAs(blob, `${file.name}${file.ext}`);
+      showToast(`Pobrano plik ${file.name}${file.ext}`, 'info');
+    }
+
+    function downloadZipArchive() {
+      if (appData.items.length === 0) {
+        showToast('Brak plików do spakowania!', 'error');
+        return;
+      }
+
+      const zip = new JSZip();
+
+      function addFolderToZip(folderId, currentZipPath) {
+        const items = appData.items.filter(i => i.parentId === folderId);
+        items.forEach(item => {
+          if (item.type === 'folder') {
+            const newPath = currentZipPath ? `${currentZipPath}/${item.name}` : item.name;
+            addFolderToZip(item.id, newPath);
+          } else {
+            const filePath = currentZipPath ? `${currentZipPath}/${item.name}${item.ext}` : `${item.name}${item.ext}`;
+            zip.file(filePath, item.content || '');
+          }
+        });
+      }
+
+      addFolderToZip(null, '');
+
+      zip.generateAsync({ type: 'blob' }).then(content => {
+        saveAs(content, 'DocuCraft_Paczka_Plikow.zip');
+        showToast('Pobrano całe archiwum ZIP!', 'info');
+      }).catch(err => {
+        console.error(err);
+        showToast('Błąd generowania pliku ZIP', 'error');
+      });
+    }
+
+    function triggerFileUpload() {
+      const input = document.getElementById('fileUploadInput');
+      if (input) input.click();
+    }
+
+    function handleFileUpload(e) {
+      if (e.target.files && e.target.files.length > 0) {
+        processUploadedFiles(e.target.files);
+        e.target.value = '';
+      }
+    }
+
+    function processUploadedFiles(files) {
+      let count = 0;
+      const total = files.length;
+
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        const fullFileName = file.name;
+        const lastDot = fullFileName.lastIndexOf('.');
+        let fileName = fullFileName;
+        let ext = '.txt';
+
+        if (lastDot !== -1) {
+          fileName = fullFileName.substring(0, lastDot);
+          ext = fullFileName.substring(lastDot).toLowerCase();
+        }
+
+        reader.onload = function(evt) {
+          const content = evt.target.result;
+          
+          appData.items.push({
+            id: 'file_' + Date.now() + Math.random().toString(36).substring(2, 6),
+            parentId: appData.currentFolderId,
+            type: 'file',
+            name: fileName,
+            ext: ext,
+            content: content
+          });
+
+          count++;
+          if (count === total) {
+            renderExplorerView();
+            saveToLocalStorage();
+            showToast(`Wgrano ${total} ${total === 1 ? 'plik' : 'plików'}!`, 'info');
+          }
+        };
+
+        if (isImageExt(ext) || isAudioExt(ext)) {
+          reader.readAsDataURL(file);
+        } else {
+          reader.readAsText(file);
+        }
+      });
+    }
+
+    function triggerImportZip() {
+      const input = document.getElementById('zipFileInput');
+      if (input) input.click();
+    }
+
+    function handleZipImport(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      JSZip.loadAsync(file).then(async (zip) => {
+        let count = 0;
+        const folderMap = new Map();
+
+        for (const relativePath in zip.files) {
+          const zipEntry = zip.files[relativePath];
+          const parts = relativePath.split('/').filter(p => p.length > 0);
+
+          if (zipEntry.dir) {
+            let currentParent = null;
+            let currentPath = '';
+
+            for (const part of parts) {
+              currentPath += (currentPath ? '/' : '') + part;
+              if (!folderMap.has(currentPath)) {
+                const newFolder = {
+                  id: 'fol_' + Date.now() + Math.random().toString(36).substring(2, 6),
+                  parentId: currentParent,
+                  type: 'folder',
+                  name: part
+                };
+                appData.items.push(newFolder);
+                folderMap.set(currentPath, newFolder.id);
+                currentParent = newFolder.id;
+              } else {
+                currentParent = folderMap.get(currentPath);
+              }
+            }
+          } else {
+            let parentFolderId = null;
+            if (parts.length > 1) {
+              const folderPathParts = parts.slice(0, -1);
+              let folderPath = '';
+              for (const part of folderPathParts) {
+                folderPath += (folderPath ? '/' : '') + part;
+                if (!folderMap.has(folderPath)) {
+                  const newFolder = {
+                    id: 'fol_' + Date.now() + Math.random().toString(36).substring(2, 6),
+                    parentId: parentFolderId,
+                    type: 'folder',
+                    name: part
+                  };
+                  appData.items.push(newFolder);
+                  folderMap.set(folderPath, newFolder.id);
+                  parentFolderId = newFolder.id;
+                } else {
+                  parentFolderId = folderMap.get(folderPath);
+                }
+              }
+            }
+
+            const fileNameWithExt = parts[parts.length - 1];
+            const lastDot = fileNameWithExt.lastIndexOf('.');
+            let fileName = fileNameWithExt;
+            let ext = '.txt';
+
+            if (lastDot !== -1) {
+              fileName = fileNameWithExt.substring(0, lastDot);
+              ext = fileNameWithExt.substring(lastDot).toLowerCase();
+            }
+
+            let content = '';
+            if (isImageExt(ext) || isAudioExt(ext)) {
+              const base64 = await zipEntry.async('base64');
+              const mimeMap = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.gif': 'image/gif',
+                '.webp': 'image/webp',
+                '.svg': 'image/svg+xml',
+                '.mp3': 'audio/mpeg',
+                '.wav': 'audio/wav',
+                '.ogg': 'audio/ogg',
+                '.m4a': 'audio/mp4'
+              };
+              const mime = mimeMap[ext] || 'application/octet-stream';
+              content = `data:${mime};base64,${base64}`;
+            } else {
+              content = await zipEntry.async('string');
+            }
+
+            appData.items.push({
+              id: 'file_' + Date.now() + Math.random().toString(36).substring(2, 6),
+              parentId: parentFolderId,
+              type: 'file',
+              name: fileName,
+              ext: ext,
+              content: content
+            });
+
+            count++;
+          }
+        }
+
+        renderExplorerView();
+        saveToLocalStorage();
+        showToast(`Zaimportowano ${count} plików z archiwum ZIP!`, 'info');
+        e.target.value = '';
+      }).catch(err => {
+        console.error(err);
+        showToast('Błąd wczytywania ZIP', 'error');
+      });
+    }
+
+    function isImageExt(ext) {
+      if (!ext) return false;
+      const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
+      return imageExts.includes(ext.toLowerCase());
+    }
+
+    function isAudioExt(ext) {
+      if (!ext) return false;
+      const audioExts = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac'];
+      return audioExts.includes(ext.toLowerCase());
+    }
+
+    function getExtBadgeColor(ext) {
+      ext = (ext || '').toLowerCase();
+      if (isAudioExt(ext)) return 'text-purple-300 border-purple-500/30 bg-purple-500/10';
+      if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) return 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
+      if (ext === '.html' || ext === '.htm') return 'text-sky-400 border-sky-500/30 bg-sky-500/10';
+      if (ext === '.txt') return 'text-slate-300 border-slate-700 bg-slate-800';
+      if (ext === '.md') return 'text-indigo-300 border-indigo-500/30 bg-indigo-500/10';
+      if (ext === '.json') return 'text-amber-300 border-amber-500/30 bg-amber-500/10';
+      if (ext === '.css') return 'text-violet-300 border-violet-500/30 bg-violet-500/10';
+      if (ext === '.js') return 'text-amber-400 border-amber-500/30 bg-amber-500/10';
+      return 'text-fuchsia-300 border-fuchsia-500/30 bg-fuchsia-500/10';
+    }
+
+    function closeModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function sanitizeFileName(name) {
+      return name.replace(/[/\\?%*:|"<>]/g, '_').trim();
+    }
+
+    function escapeHtml(text) {
+      return (text || '')
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+
+      const toast = document.createElement('div');
+      const isError = type === 'error';
+      const bgClass = isError ? 'bg-rose-900/90 text-rose-100 border-rose-700' : 'bg-slate-800 text-slate-100 border-indigo-500/50';
+      const icon = isError ? 'fa-triangle-exclamation text-rose-400' : 'fa-circle-check text-indigo-400';
+
+      toast.className = `px-4 py-2.5 rounded-lg border shadow-xl flex items-center gap-2.5 text-xs font-medium backdrop-blur-md transform transition-all duration-300 translate-y-2 opacity-0 pointer-events-auto ${bgClass}`;
+      toast.innerHTML = `<i class="fa-solid ${icon} text-sm"></i><span>${escapeHtml(message)}</span>`;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    // App Initialization
+    document.addEventListener('DOMContentLoaded', () => {
+      loadFromLocalStorage();
+      renderExplorerView();
+
+      const dropZone = document.getElementById('folderViewPane');
+      const overlay = document.getElementById('dragDropOverlay');
+
+      if (dropZone) {
+        dropZone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (overlay) overlay.classList.remove('hidden');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+          e.preventDefault();
+          if (overlay) overlay.classList.add('hidden');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          if (overlay) overlay.classList.add('hidden');
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            processUploadedFiles(e.dataTransfer.files);
+          }
+        });
+      }  
+    });
+  </script>
+</body>
+</html>
